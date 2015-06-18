@@ -114,32 +114,6 @@ def CDMA_average_with_mean_SNR(intensity, epsilon, p_f, prob_dist):
     logger.debug("lamdba:{0} N_bar:{1} N_C:{2} p_t:{3}".format(intensity, n_mean, N_c, p_t))
     return p_t
 
-def CDMA_average_with_multiple_w(intensity, epsilon, p_f, prob_dist):
-    """
-        This function is used to estimate the evolution of average transmit power when multiple bandwidth is supported
-    """
-    p_c = (p_f-epsilon)/(1.0-epsilon)
-    proba_distribution_poisson = [poisson.pmf(k, intensity) for k in range(int(intensity+200))]
-    cumulative = 0.0
-    n_mean = 0
-    while cumulative <= 1-epsilon:
-        cumulative += proba_distribution_poisson[n_mean]
-        n_mean += 1
-    N_c = math.ceil(math.log(1+(n_mean-1)/p_c, 2))
-    mu_t = pow(2, i*L*N_c/W/TAU_S)-1
-    CONSTANT = (RADIUS**(GAMMA+2)-RADIUS_INNER**(GAMMA+2))*2/((RADIUS**2-RADIUS_INNER**2)*(GAMMA+2)*RADIUS**GAMMA)
-    # p_t = CONSTANT/(MU*(N_c/mu_t-n_mean+1))
-    p_t = CONSTANT*sum([q[1]/(MU*(N_c/(pow(2, L*N_c/(q[0]*W)/TAU_S)-1)-n_mean+1)) for q in prob_dist])
-    try:
-        p_t = 10*math.log(1000*p_t, 10)
-    except ValueError:
-        print "Math domain error,p_t is:{0} when i is:{1}, N_c is :{2}, N_bar:{3} and proba_distribution:{4}".format(
-            p_t, i, N_c, n_mean, prob_dist
-        )
-
-    logger.debug("lamdba:{0} N_bar:{1} N_C:{2} p_t:{3}".format(intensity, n_mean, N_c, p_t))
-    return p_t
-
 def CDMA_ratio_target_SNR(intensity, epsilon, p_f, i=1):
     p_c = (p_f-epsilon)/(1.0-epsilon)
     proba_distribution_poisson = [poisson.pmf(k, intensity) for k in range(int(intensity+200))]
@@ -292,8 +266,12 @@ def average_power4(intensity, epsilon, p_f):
 
 
 
-# FDMA
+# FDMA related functions
+
 def FDMA_average_power(intensity, epsilon):
+    """
+        This function is used to reproduce the numerical results given in Dhillion's Paper...
+    """
     # p_c = (p_f-epsilon)/(1.0-epsilon)
     proba_distribution_poisson = [poisson.pmf(k, intensity) for k in range(int(intensity+200))]
     cumulative = 0.0
@@ -309,6 +287,29 @@ def FDMA_average_power(intensity, epsilon):
     logger.debug("lamdba:{0} K:{1} p_t:{2}".format(intensity, K, p_t))
     return p_t
 
+
+def VL_FDMA_average_power(intensity, epsilon):
+    """
+        This function is used to explore the impact when packet length is a variable instead of a constant
+    """
+    # p_c = (p_f-epsilon)/(1.0-epsilon)
+    proba_distribution_poisson = [poisson.pmf(k, intensity) for k in range(int(intensity+200))]
+    cumulative = 0.0
+    K = 0
+    while cumulative <= 1-epsilon:
+        cumulative += proba_distribution_poisson[K]
+        K += 1
+    # N_c = math.ceil(math.log(1+(n_mean-1)/p_c, 2))
+    # mu_t = pow(2, L*N_c/W/TAU_S)-1
+    CONSTANT = (RADIUS**(GAMMA+2)-RADIUS_INNER**(GAMMA+2))*2/((RADIUS**2-RADIUS_INNER**2)*(GAMMA+2)*RADIUS**GAMMA)
+    p_t = (2**(5*K*L/W/TAU_S)-1.0)/MU/K*CONSTANT
+    p_t = 10*math.log(1000*p_t, 10)
+    logger.debug("lamdba:{0} K:{1} p_t:{2}".format(intensity, K, p_t))
+    return p_t
+
+
+# SIC related functions
+# 虽然我一直不太明白，这个所谓的SIC倒是是个什么鸟玩意儿。。。
 def SIC_average_power(intensity, epsilon):
     # p_c = (p_f-epsilon)/(1.0-epsilon)
     proba_distribution_poisson = [poisson.pmf(k, intensity) for k in range(int(intensity+200))]
@@ -529,21 +530,27 @@ if __name__ == '__main__':
 
 
 
-    # figure 3, plot the evalution when playing with target SNR mu_t
+    # figure 3, plot the evalution when playing with target SNR mu_t (packet length)
     # ------------------------------------------------------------------------------------------------------------------
     plt.figure(3, figsize=(12, 4.5), dpi=120)
     x_BS_load = np.linspace(1.1, MAX_LAMBDA, num=100)
     y_avg_power_1_1 = [CDMA_average_with_variable_SNR(intensity=intensity, epsilon=EPSILON, p_f=P_F) for intensity in x_BS_load]
+    # 极限情况： cell中所有的packet均为3L，此时为 Average transmit power曲线之上限
     y_avg_power_1_3 = [CDMA_average_with_variable_SNR(intensity=intensity, epsilon=EPSILON, p_f=P_F, i=3) for intensity in x_BS_load]
     y_avg_power_1_5 = [CDMA_average_with_mean_SNR(intensity=intensity, epsilon=EPSILON, p_f=P_F, prob_dist=[(0.8, 0.2), (1.0, 0.15), (1.2, 0.15), (1.6, 0.1), (2.0, 0.1), (2.5, 0.15), (3.0, 0.15)]) for intensity in x_BS_load]
-    # y_avg_power_1_7 = [CDMA_average_with_multiple_w(intensity=intensity, epsilon=EPSILON, p_f=P_F, prob_dist=[(0.65, 0.2), (0.75, 0.3), (0.61, 0.3), (0.8, 0.1), (1.0, 0.1)]) for intensity in x_BS_load]
-    # y_avg_power_1_9 = [CDMA_average_with_multiple_w(intensity=intensity, epsilon=EPSILON, p_f=P_F, prob_dist=[(0.61, 1.0)]) for intensity in x_BS_load]
+    # FDMA 的参考线
+    y_avg_power_2_1 = [FDMA_average_power(intensity=intensity, epsilon=EPSILON) for intensity in x_BS_load]
+    y_avg_power_2_2 = [VL_FDMA_average_power(intensity=intensity, epsilon=EPSILON) for intensity in x_BS_load]
+
+
 
     line_cdma_avg_power, = plt.plot(x_BS_load, y_avg_power_1_1, linestyle='--', marker='s', markevery=4, color='b', label='CDMA: reference case(constant packet length)')
     line_cdma_avg_power_variant_mut, = plt.plot(x_BS_load, y_avg_power_1_3, linestyle='--', marker='+', markevery=4, color='k', label='CDMA: limit case where constant packet are 3L')
-    line_cdma_avg_power_mean_mut, = plt.plot(x_BS_load, y_avg_power_1_5, linestyle='--', marker='*', markevery=4, color='r', label='CDMA: general case where packet length is discret random variable')
-    # line_cdma_avg_power_multiple_w, = plt.plot(x_BS_load, y_avg_power_1_7, linestyle='--', marker='*', markevery=4, color='m', label='CDMA: Mean of R and w')
-    # line_cdma_avg_power_multiple_w_max, = plt.plot(x_BS_load, y_avg_power_1_9, linestyle='--', marker='*', markevery=4, color='y', label='CDMA: Mean of R and minimum w')
+    line_cdma_avg_power_mean_mut, = plt.plot(x_BS_load, y_avg_power_1_5, linestyle='--', marker='*', markevery=4, color='g', label='CDMA: general case where packet length is discret random variable')
+
+
+    line_fdma_avg_power, =plt.plot(x_BS_load, y_avg_power_2_1, linestyle='--', marker='D', markevery=4, color='r', label='FDMA: Mean')
+    line_fdma_avg_power_1, =plt.plot(x_BS_load, y_avg_power_2_2, linestyle='--', marker='o', markevery=4, color='m', label='FDMA: with 3L')
 
     plt.grid()
     plt.xlim([0, MAX_LAMBDA])
@@ -552,9 +559,9 @@ if __name__ == '__main__':
         handles=[
             line_cdma_avg_power,
             line_cdma_avg_power_variant_mut,
-            line_cdma_avg_power_mean_mut
-            # line_cdma_avg_power_multiple_w,
-            # line_cdma_avg_power_multiple_w_max
+            line_cdma_avg_power_mean_mut,
+            line_fdma_avg_power,
+            line_fdma_avg_power_1
         ],
         loc=2
     )
@@ -564,94 +571,57 @@ if __name__ == '__main__':
     plt.savefig(os.path.join(FIGURES_FOLDED, "Average-Transmit-Power-Variant-Target-SNR.png"))
 
 
-    # change: 2015-06-16 注释掉关于 channel g
-    # figure 4, plot the evaluation when playing with channel gain g
-    # ------------------------------------------------------------------------------------------------------------------
-    plt.figure(4, figsize=(12, 4.5), dpi=120)
-    x_BS_load = np.linspace(1.1, MAX_LAMBDA, num=100)
-    y_avg_power_1_1 = [CDMA_average_with_variable_SNR(intensity=intensity, epsilon=EPSILON, p_f=P_F) for intensity in x_BS_load]
-    line_cdma_avg_power, = plt.plot(x_BS_load, y_avg_power_1_1, linestyle='--', marker='s', markevery=4, color='b', label='CDMA:reference')
-    #y_avg_power_variant_g_1 = [CDMA_average_power_variant_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-0.75, 0.75)) for intensity in x_BS_load]
-    #y_avg_power_variant_g_2 = [CDMA_average_power_variant_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-0.25, 0.25)) for intensity in x_BS_load]
-    #y_avg_power_variant_g_3 = [CDMA_average_power_variant_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-0.5, 0.5)) for intensity in x_BS_load]
-    y_avg_power_variant_g_1 = [MT_CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=1) for intensity in x_BS_load]
-
-    # y_avg_power_variant_g_2 = [CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=2) for intensity in x_BS_load]
-    #
-    # y_avg_power_variant_g_3 = [CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=3) for intensity in x_BS_load]
-    # y_avg_power_variant_g_4 = [CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=4) for intensity in x_BS_load]
-    #
-    # y_avg_power_variant_g_4 = [CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=4) for intensity in x_BS_load]
-    for i in range(2):
-        plt.scatter(
-            x_BS_load,
-            [MT_CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=1) for intensity in x_BS_load],
-            color='red'
-        )
-
-    for i in range(2):
-        plt.scatter(
-            x_BS_load,
-            [MT_CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=2) for intensity in x_BS_load],
-            color='green'
-        )
-    # line_cdma_avg_power_variant_g_2, = plt.plot(x_BS_load, y_avg_power_variant_g_2, linestyle='--', marker='*', markevery=4, color='y', label='CDMA:$\sigma=2$')
-    # line_cdma_avg_power_variant_g_3, = plt.plot(x_BS_load, y_avg_power_variant_g_3, linestyle='--', marker='*', markevery=4, color='c', label='CDMA:$\sigma=3$')
-    # line_cdma_avg_power_variant_g_4, = plt.plot(x_BS_load, y_avg_power_variant_g_4, linestyle='-', marker='*', markevery=4, color='c', label='CDMA:$\sigma=4$')
-
-    plt.grid()
-    plt.xlim([0, MAX_LAMBDA])
-    # # plt.legend(handler_map={line_cdma_avg_power: HandlerLine2D(numpoints=4)})
-    # first_legend = plt.legend(
-    #     handles=[
-    #         line_cdma_avg_power,
-    #         line_cdma_avg_power_variant_g_1,
-    #         line_cdma_avg_power_variant_g_2,
-    #         line_cdma_avg_power_variant_g_3,
-    #         line_cdma_avg_power_variant_g_4
-    #     ],
-    #     loc=2
-    # )
-    # ax = plt.gca().add_artist(first_legend)
-    plt.xlabel(r'BS load ($\lambda$ arrivals per second)', fontsize=12)
-    plt.ylabel(r'Average transmit power (in dBm)', fontsize=12)
-    plt.savefig(os.path.join(FIGURES_FOLDED, "Average-Transmit-Power-Variant-Channel-Gain.png"))
-
-
-    # # figure 5, plot the evaluation when introducing power control error in CDMA
+    # # change: 2015-06-16 注释掉关于 channel g
+    # # figure 4, plot the evaluation when playing with channel gain g
     # # ------------------------------------------------------------------------------------------------------------------
-    # MAX_LAMBDA = 1300
-    # plt.figure(5, figsize=(12, 4.5), dpi=120)
+    # plt.figure(4, figsize=(12, 4.5), dpi=120)
     # x_BS_load = np.linspace(1.1, MAX_LAMBDA, num=100)
     # y_avg_power_1_1 = [CDMA_average_with_variable_SNR(intensity=intensity, epsilon=EPSILON, p_f=P_F) for intensity in x_BS_load]
     # line_cdma_avg_power, = plt.plot(x_BS_load, y_avg_power_1_1, linestyle='--', marker='s', markevery=4, color='b', label='CDMA:reference')
+    # #y_avg_power_variant_g_1 = [CDMA_average_power_variant_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-0.75, 0.75)) for intensity in x_BS_load]
+    # #y_avg_power_variant_g_2 = [CDMA_average_power_variant_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-0.25, 0.25)) for intensity in x_BS_load]
+    # #y_avg_power_variant_g_3 = [CDMA_average_power_variant_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-0.5, 0.5)) for intensity in x_BS_load]
+    # y_avg_power_variant_g_1 = [MT_CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=1) for intensity in x_BS_load]
     #
-    # y_avg_power_variant_g_1 = [upper_bound_imperct_cdmd(intensity=intensity, epsilon=EPSILON, p_f=P_F, delta=2) for intensity in x_BS_load]
-    # y_avg_power_variant_g_2 = [lower_bound_imperct_cdmd(intensity=intensity, epsilon=EPSILON, p_f=P_F, delta=2) for intensity in x_BS_load]
-    # y_avg_power_variant_g_3 = [mean_imperct_cdmd(intensity=intensity, epsilon=EPSILON, p_f=P_F, delta=2) for intensity in x_BS_load]
+    # # y_avg_power_variant_g_2 = [CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=2) for intensity in x_BS_load]
+    # #
+    # # y_avg_power_variant_g_3 = [CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=3) for intensity in x_BS_load]
+    # # y_avg_power_variant_g_4 = [CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=4) for intensity in x_BS_load]
+    # #
+    # # y_avg_power_variant_g_4 = [CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=4) for intensity in x_BS_load]
+    # for i in range(2):
+    #     plt.scatter(
+    #         x_BS_load,
+    #         [MT_CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=1) for intensity in x_BS_load],
+    #         color='red'
+    #     )
     #
-    # # y_avg_power_variant_g_1 = [CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-1000, 1000), delta=1) for intensity in x_BS_load]
-    #
-    # line_cdma_avg_power_variant_g_1, = plt.plot(x_BS_load, y_avg_power_variant_g_1, linestyle='--', marker='*', markevery=4, color='g', label='upper CDMA:$\sigma=1$')
-    # line_cdma_avg_power_variant_g_2, = plt.plot(x_BS_load, y_avg_power_variant_g_2, linestyle='--', marker='+', markevery=4, color='g', label='lower CDMA:$\sigma=1$')
-    # line_cdma_avg_power_variant_g_3, = plt.plot(x_BS_load, y_avg_power_variant_g_3, linestyle='--', marker='+', markevery=4, color='g', label='mean CDMA:$\sigma=1$')
+    # for i in range(2):
+    #     plt.scatter(
+    #         x_BS_load,
+    #         [MT_CDMA_average_power_normal_g(intensity=intensity, epsilon=EPSILON, p_f=P_F, bound=(-100, 1000), delta=2) for intensity in x_BS_load],
+    #         color='green'
+    #     )
+    # # line_cdma_avg_power_variant_g_2, = plt.plot(x_BS_load, y_avg_power_variant_g_2, linestyle='--', marker='*', markevery=4, color='y', label='CDMA:$\sigma=2$')
+    # # line_cdma_avg_power_variant_g_3, = plt.plot(x_BS_load, y_avg_power_variant_g_3, linestyle='--', marker='*', markevery=4, color='c', label='CDMA:$\sigma=3$')
+    # # line_cdma_avg_power_variant_g_4, = plt.plot(x_BS_load, y_avg_power_variant_g_4, linestyle='-', marker='*', markevery=4, color='c', label='CDMA:$\sigma=4$')
     #
     # plt.grid()
     # plt.xlim([0, MAX_LAMBDA])
-    # first_legend = plt.legend(
-    #     handles=[
-    #         line_cdma_avg_power,
-    #         line_cdma_avg_power_variant_g_1,
-    #         line_cdma_avg_power_variant_g_2,
-    #         line_cdma_avg_power_variant_g_3
-    #     ],
-    #     loc=4
-    # )
-    # ax = plt.gca().add_artist(first_legend)
+    # # # plt.legend(handler_map={line_cdma_avg_power: HandlerLine2D(numpoints=4)})
+    # # first_legend = plt.legend(
+    # #     handles=[
+    # #         line_cdma_avg_power,
+    # #         line_cdma_avg_power_variant_g_1,
+    # #         line_cdma_avg_power_variant_g_2,
+    # #         line_cdma_avg_power_variant_g_3,
+    # #         line_cdma_avg_power_variant_g_4
+    # #     ],
+    # #     loc=2
+    # # )
+    # # ax = plt.gca().add_artist(first_legend)
     # plt.xlabel(r'BS load ($\lambda$ arrivals per second)', fontsize=12)
     # plt.ylabel(r'Average transmit power (in dBm)', fontsize=12)
-    # plt.savefig(os.path.join(FIGURES_FOLDED, "Imperfect-Average-Transmit-Power.png"))
-
-
+    # plt.savefig(os.path.join(FIGURES_FOLDED, "Average-Transmit-Power-Variant-Channel-Gain.png"))
 
     plt.show()
